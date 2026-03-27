@@ -1,0 +1,13 @@
+com/example/heritage/Resource.class
+com/example/heritage/LoginRequest.class
+com/example/heritage/ResourceService.class
+com/example/heritage/ResourceController.class
+com/example/heritage/UserRole.class
+com/example/heritage/AuthController.class
+com/example/heritage/AuthService.class
+com/example/heritage/UserSession.class
+com/example/heritage/HeritageApplication.class
+com/example/heritage/ResourceStatus.class
+com/example/heritage/LoginResponse.class
+com/example/heritage/ResourceRepository.class
+com/example/heritage/AuthService$DemoUser.class

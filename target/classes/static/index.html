@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Community Heritage Workflow Draft</title>
+  <link rel="stylesheet" href="/app.css" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+<body>
+<div id="app" class="container">
+  <div class="card" v-if="!token">
+    <h2>登录</h2>
+    <div class="row">
+      <input v-model="loginForm.username" placeholder="用户名（contributor/viewer/admin）" />
+      <input v-model="loginForm.password" type="password" placeholder="密码（默认 123456）" />
+      <button @click="login">登录</button>
+    </div>
+    <div class="muted">系统会根据登录账号自动识别角色，不再手动选择角色。</div>
+  </div>
+
+  <div class="card" v-if="token">
+    <h2>Community Heritage Resource Workflow</h2>
+    <div class="row">
+      <span>当前用户：{{ userInfo.username }} / 角色：{{ userInfo.role }}</span>
+      <button @click="reloadAll">刷新数据</button>
+      <button class="secondary" @click="logout">退出登录</button>
+    </div>
+  </div>
+
+  <div class="card" v-if="token && userInfo.role==='CONTRIBUTOR'">
+    <h3>Contributor 操作</h3>
+    <div class="row">
+      <button @click="createDraft">新建草稿</button>
+      <span class="muted">标题最多 {{ options.titleMaxLength }} 字，描述最多 {{ options.descriptionMaxLength }} 字。</span>
+    </div>
+
+    <h4>草稿箱</h4>
+    <div class="resource-item" v-for="r in drafts" :key="r.id">
+      <div><b>#{{ r.id }}</b> 状态：{{ r.status }}</div>
+      <div class="muted">审核反馈：{{ r.reviewFeedback || '无' }}</div>
+      <div class="row" style="margin-top:8px;">
+        <input v-model="r.title" placeholder="标题（30字内）" />
+        <select v-model="r.category"><option value="">选择分类</option><option v-for="c in options.categories" :key="c">{{ c }}</option></select>
+        <select v-model="r.place"><option value="">选择地点</option><option v-for="p in options.places" :key="p">{{ p }}</option></select>
+      </div>
+      <div style="margin-top:8px;">
+        <textarea v-model="r.description" placeholder="描述（2000字内）"></textarea>
+      </div>
+      <div style="margin-top:8px;">
+        <input v-model="r.tags" placeholder="标签（可自由添加，逗号分隔）" />
+        <div class="muted">推荐标签：{{ (options.recommendedTags || []).join("、") }}</div>
+      </div>
+      <div style="margin-top:8px;">
+        <select v-model="r.copyrightDeclaration">
+          <option value="">选择版权声明</option>
+          <option v-for="item in options.copyrightOptions" :key="item">{{ item }}</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input v-model="r.externalLink" placeholder="外链（提交时必填）" />
+        <button class="secondary" @click="saveDraft(r)">保存草稿</button>
+        <button @click="submit(r)">提交审核</button>
+        <button class="danger" @click="deleteDraft(r.id)">删除草稿</button>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input type="file" @change="e => onFileChange(e, r.id)" />
+        <button class="secondary" @click="upload(r.id)">上传文件</button>
+      </div>
+      <div class="muted">文件限制：{{ (options.allowedFileExtensions || []).join(", ") }}</div>
+      <div class="muted">filePath: {{ r.filePath || '未上传' }}</div>
+      <div class="muted">externalLink: {{ r.externalLink || '未设置' }}</div>
+    </div>
+    <div class="muted" v-if="drafts.length===0">暂无草稿</div>
+
+    <h4>我的全部资源</h4>
+    <div class="resource-item" v-for="r in mine" :key="'mine-'+r.id">
+      <div><b>#{{ r.id }} {{ r.title || '(未命名)' }}</b> 状态：{{ r.status }}</div>
+      <div class="muted">反馈：{{ r.reviewFeedback || '无' }}</div>
+    </div>
+  </div>
+
+  <div class="card" v-if="token && userInfo.role==='ADMIN'">
+    <h3>Admin 审核区</h3>
+    <div class="resource-item" v-for="r in pending" :key="r.id">
+      <div><b>#{{ r.id }} {{ r.title || '(未命名)' }}</b> by Contributor {{ r.contributorId }}</div>
+      <div>状态：{{ r.status }}</div>
+      <div class="muted">{{ r.description }}</div>
+      <textarea v-model="adminFeedback[r.id]" placeholder="审核反馈（通过/拒绝都必填）"></textarea>
+      <div class="row">
+        <button @click="review(r.id, true)">审核通过</button>
+        <button class="danger" @click="review(r.id, false)">审核拒绝</button>
+      </div>
+    </div>
+    <div class="muted" v-if="pending.length===0">暂无待审核资源</div>
+  </div>
+
+  <div class="card" v-if="token && (userInfo.role==='VIEWER' || userInfo.role==='CONTRIBUTOR')">
+    <h3>可见资源（仅 Approved）</h3>
+    <div class="resource-item" v-for="r in approved" :key="r.id">
+      <div><b>#{{ r.id }} {{ r.title || '(未命名)' }}</b></div>
+      <div>状态：{{ r.status }}</div>
+      <div>{{ r.description }}</div>
+      <div class="muted">分类：{{ r.category || '-' }}，地点：{{ r.place || '-' }}</div>
+      <div class="muted">标签：{{ r.tags || '-' }}</div>
+    </div>
+    <div class="muted" v-if="approved.length===0">暂无已通过资源</div>
+  </div>
+
+  <div class="card" v-if="message">
+    <b>提示：</b> {{ message }}
+  </div>
+</div>
+
+<script>
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      token: "",
+      userInfo: {},
+      loginForm: { username: "contributor", password: "123456" },
+      drafts: [],
+      mine: [],
+      pending: [],
+      approved: [],
+      options: {
+        categories: [],
+        places: [],
+        recommendedTags: [],
+        copyrightOptions: [],
+        titleMaxLength: 30,
+        descriptionMaxLength: 2000,
+        allowedFileExtensions: [".docx", ".pdf", ".txt"]
+      },
+      message: "",
+      pickedFiles: {},
+      adminFeedback: {}
+    };
+  },
+  methods: {
+    headers(json = true) {
+      const h = { "X-Auth-Token": this.token };
+      if (json) h["Content-Type"] = "application/json";
+      return h;
+    },
+    async request(url, options = {}) {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ error: "请求失败" }));
+        throw new Error(e.error || "请求失败");
+      }
+      return res.json();
+    },
+    async login() {
+      try {
+        const result = await this.request("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(this.loginForm)
+        });
+        this.token = result.token;
+        this.userInfo = result;
+        this.message = "登录成功";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    logout() {
+      this.token = "";
+      this.userInfo = {};
+      this.drafts = [];
+      this.mine = [];
+      this.pending = [];
+      this.approved = [];
+      this.message = "已退出";
+    },
+    async reloadAll() {
+      if (!this.token) return;
+      try {
+        if (this.userInfo.role === "CONTRIBUTOR") {
+          this.options = await this.request("/api/resources/options", { headers: this.headers() });
+          this.drafts = await this.request("/api/resources/drafts", { headers: this.headers() });
+          this.mine = await this.request("/api/resources/mine", { headers: this.headers() });
+          this.approved = await this.request("/api/resources/approved", { headers: this.headers(false) });
+        } else if (this.userInfo.role === "ADMIN") {
+          this.pending = await this.request("/api/resources/pending", { headers: this.headers(false) });
+        } else if (this.userInfo.role === "VIEWER") {
+          this.approved = await this.request("/api/resources/approved", { headers: this.headers(false) });
+        }
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    async createDraft() {
+      try {
+        await this.request("/api/resources", { method: "POST", headers: this.headers(false) });
+        this.message = "已创建草稿";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    async saveDraft(r) {
+      try {
+        await this.request(`/api/resources/${r.id}/save-draft`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify(r)
+        });
+        this.message = "草稿已保存";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    async deleteDraft(resourceId) {
+      try {
+        await this.request(`/api/resources/${resourceId}/draft`, {
+          method: "DELETE",
+          headers: this.headers(false)
+        });
+        this.message = "草稿已删除";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    onFileChange(e, resourceId) {
+      this.pickedFiles[resourceId] = e.target.files[0];
+    },
+    async upload(resourceId) {
+      try {
+        const file = this.pickedFiles[resourceId];
+        if (!file) throw new Error("请先选择文件");
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(`/api/resources/${resourceId}/file`, {
+          method: "POST",
+          headers: this.headers(false),
+          body: form
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({ error: "上传失败" }));
+          throw new Error(e.error || "上传失败");
+        }
+        this.message = "文件上传成功";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    async submit(r) {
+      try {
+        await this.request(`/api/resources/${r.id}/submit`, {
+          method: "POST",
+          headers: this.headers(false)
+        });
+        this.message = "已提交审核";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    },
+    async review(resourceId, approved) {
+      try {
+        await this.request(`/api/resources/${resourceId}/review`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({
+            approved,
+            feedback: this.adminFeedback[resourceId] || ""
+          })
+        });
+        this.message = approved ? "审核通过并反馈" : "审核拒绝并反馈";
+        await this.reloadAll();
+      } catch (e) {
+        this.message = e.message;
+      }
+    }
+  }
+}).mount("#app");
+</script>
+</body>
+</html>
