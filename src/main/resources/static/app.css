@@ -62,3 +62,140 @@ button.danger {
 .muted {
   color: #57606a;
 }
+
+/* 提交校验 Toast 提示 */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  min-width: 320px;
+  max-width: 520px;
+}
+
+.toast-error {
+  background: #fff1f0;
+  border: 1.5px solid #ff4d4f;
+  border-radius: 10px;
+  padding: 16px 20px;
+  box-shadow: 0 4px 24px rgba(207,34,46,0.15);
+  animation: toast-in 0.3s cubic-bezier(.4,0,.2,1);
+}
+
+.toast-title {
+  font-weight: 700;
+  color: #cf222e;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.toast-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #b91c1c;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.toast-list li {
+  list-style: disc;
+}
+
+.toast-fade-enter-active {
+  transition: opacity 0.3s, transform 0.3s;
+}
+.toast-fade-leave-active {
+  transition: opacity 0.4s, transform 0.4s;
+}
+.toast-fade-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-16px);
+}
+.toast-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-16px);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 草稿箱折叠头部 */
+.draft-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 6px 0;
+  border-bottom: 1px solid #e8eaed;
+  margin-bottom: 4px;
+  user-select: none;
+}
+.draft-header:hover {
+  color: #1f6feb;
+}
+.draft-meta {
+  font-size: 12px;
+  color: #57606a;
+}
+.draft-body {
+  margin-top: 12px;
+}
+
+/* 字段分组 */
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.field-label-row label {
+  font-weight: 600;
+  font-size: 13px;
+}
+.required {
+  color: #cf222e;
+}
+
+/* 字数计数 */
+.char-count {
+  font-size: 12px;
+  color: #57606a;
+}
+.char-count.warn {
+  color: #cf222e;
+  font-weight: 600;
+}
+
+/* 宽度辅助 */
+.full-width {
+  width: 100%;
+  box-sizing: border-box;
+}
+.flex1 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 标签按钮 */
+.tag-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tag-warn {
+  color: #cf222e;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* 视图切换高亮 */
+button.active {
+  background: #0d419d;
+  outline: 2px solid #1f6feb;
+}

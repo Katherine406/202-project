@@ -9,6 +9,8 @@
 </head>
 <body>
 <div id="app" class="container">
+
+  <!-- 登录 -->
   <div class="card" v-if="!token">
     <h2>登录</h2>
     <div class="row">
@@ -19,6 +21,7 @@
     <div class="muted">系统会根据登录账号自动识别角色，不再手动选择角色。</div>
   </div>
 
+  <!-- 顶栏 -->
   <div class="card" v-if="token">
     <h2>Community Heritage Resource Workflow</h2>
     <div class="row">
@@ -28,58 +31,146 @@
     </div>
   </div>
 
+  <!-- Contributor 区域 -->
   <div class="card" v-if="token && userInfo.role==='CONTRIBUTOR'">
     <h3>Contributor 操作</h3>
-    <div class="row">
+    <div class="row" style="align-items:center;">
       <button @click="createDraft">新建草稿</button>
-      <span class="muted">标题最多 {{ options.titleMaxLength }} 字，描述最多 {{ options.descriptionMaxLength }} 字。</span>
+      <button class="secondary" @click="view='drafts'" :class="{active: view==='drafts'}">草稿箱 ({{ drafts.length }})</button>
+      <button class="secondary" @click="view='mine'" :class="{active: view==='mine'}">我的全部资源</button>
     </div>
 
-    <h4>草稿箱</h4>
-    <div class="resource-item" v-for="r in drafts" :key="r.id">
-      <div><b>#{{ r.id }}</b> 状态：{{ r.status }}</div>
-      <div class="muted">审核反馈：{{ r.reviewFeedback || '无' }}</div>
-      <div class="row" style="margin-top:8px;">
-        <input v-model="r.title" placeholder="标题（30字内）" />
-        <select v-model="r.category"><option value="">选择分类</option><option v-for="c in options.categories" :key="c">{{ c }}</option></select>
-        <select v-model="r.place"><option value="">选择地点</option><option v-for="p in options.places" :key="p">{{ p }}</option></select>
-      </div>
-      <div style="margin-top:8px;">
-        <textarea v-model="r.description" placeholder="描述（2000字内）"></textarea>
-      </div>
-      <div style="margin-top:8px;">
-        <input v-model="r.tags" placeholder="标签（可自由添加，逗号分隔）" />
-        <div class="muted">推荐标签：{{ (options.recommendedTags || []).join("、") }}</div>
-      </div>
-      <div style="margin-top:8px;">
-        <select v-model="r.copyrightDeclaration">
-          <option value="">选择版权声明</option>
-          <option v-for="item in options.copyrightOptions" :key="item">{{ item }}</option>
-        </select>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <input v-model="r.externalLink" placeholder="外链（提交时必填）" />
-        <button class="secondary" @click="saveDraft(r)">保存草稿</button>
-        <button @click="submit(r)">提交审核</button>
-        <button class="danger" @click="deleteDraft(r.id)">删除草稿</button>
-      </div>
-      <div class="row" style="margin-top:8px;">
-        <input type="file" @change="e => onFileChange(e, r.id)" />
-        <button class="secondary" @click="upload(r.id)">上传文件</button>
-      </div>
-      <div class="muted">文件限制：{{ (options.allowedFileExtensions || []).join(", ") }}</div>
-      <div class="muted">filePath: {{ r.filePath || '未上传' }}</div>
-      <div class="muted">externalLink: {{ r.externalLink || '未设置' }}</div>
-    </div>
-    <div class="muted" v-if="drafts.length===0">暂无草稿</div>
+    <!-- 草稿箱视图 -->
+    <div v-if="view==='drafts'">
+      <h4>草稿箱</h4>
+      <div class="muted" v-if="drafts.length===0">暂无草稿，点击「新建草稿」创建。</div>
+      <div class="resource-item" v-for="r in drafts" :key="r.id">
+        <!-- 折叠头部 -->
+        <div class="draft-header" @click="toggleDraft(r.id)">
+          <span><b>#{{ r.id }}</b> {{ r.title || '(未命名草稿)' }}</span>
+          <span class="draft-meta">状态：{{ r.status }} &nbsp;|&nbsp; {{ expandedDraft === r.id ? '▲ 收起' : '▼ 展开编辑' }}</span>
+        </div>
+        <div class="muted" style="font-size:12px;">审核反馈：{{ r.reviewFeedback || '无' }}</div>
 
-    <h4>我的全部资源</h4>
-    <div class="resource-item" v-for="r in mine" :key="'mine-'+r.id">
-      <div><b>#{{ r.id }} {{ r.title || '(未命名)' }}</b> 状态：{{ r.status }}</div>
-      <div class="muted">反馈：{{ r.reviewFeedback || '无' }}</div>
+        <!-- 展开的编辑区 -->
+        <div v-if="expandedDraft === r.id" class="draft-body">
+
+          <!-- 标题 -->
+          <div class="field-group">
+            <div class="field-label-row">
+              <label>标题 <span class="required">*</span></label>
+              <span class="char-count" :class="{ warn: (r.title||'').length >= options.titleMaxLength }">
+                {{ (r.title||'').length }} / {{ options.titleMaxLength }}
+              </span>
+            </div>
+            <input
+              :value="r.title"
+              @input="onTitleInput($event, r)"
+              placeholder="请输入标题（30字内）"
+              class="full-width"
+            />
+          </div>
+
+          <!-- 分类 & 地点 -->
+          <div class="row" style="margin-top:10px;">
+            <div class="field-group flex1">
+              <label>分类 <span class="required">*</span></label>
+              <select v-model="r.category" class="full-width">
+                <option value="">选择分类</option>
+                <option v-for="c in options.categories" :key="c">{{ c }}</option>
+              </select>
+            </div>
+            <div class="field-group flex1">
+              <label>地点 <span class="required">*</span></label>
+              <select v-model="r.place" class="full-width">
+                <option value="">选择地点</option>
+                <option v-for="p in options.places" :key="p">{{ p }}</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 描述 -->
+          <div class="field-group" style="margin-top:10px;">
+            <div class="field-label-row">
+              <label>描述 <span class="required">*</span></label>
+              <span class="char-count" :class="{ warn: (r.description||'').length >= options.descriptionMaxLength }">
+                {{ (r.description||'').length }} / {{ options.descriptionMaxLength }}
+              </span>
+            </div>
+            <textarea
+              :value="r.description"
+              @input="onDescInput($event, r)"
+              placeholder="请输入描述（2000字内）"
+            ></textarea>
+          </div>
+
+          <!-- 标签 -->
+          <div class="field-group" style="margin-top:10px;">
+            <div class="field-label-row">
+              <label>标签 <span class="required">*</span></label>
+              <span class="muted" style="font-size:12px;">已添加 {{ tagCount(r) }}/5 个标签</span>
+            </div>
+            <div class="row" style="align-items:center;gap:8px;">
+              <input
+                :value="r.tags"
+                @input="r.tags = $event.target.value"
+                placeholder="标签自动以 # 开头，空格分隔"
+                class="flex1"
+              />
+              <button class="secondary tag-btn" @click="addTag(r)">+ 标签</button>
+            </div>
+            <div class="muted" style="font-size:12px;margin-top:4px;">推荐标签：{{ (options.recommendedTags || []).join('、') }}</div>
+            <div class="tag-warn" v-if="tagLimitHit[r.id]">最多可以输入 5 个标签</div>
+          </div>
+
+          <!-- 版权声明 -->
+          <div class="field-group" style="margin-top:10px;">
+            <label>版权声明 <span class="required">*</span></label>
+            <select v-model="r.copyrightDeclaration" class="full-width">
+              <option value="">选择版权声明</option>
+              <option v-for="item in options.copyrightOptions" :key="item">{{ item }}</option>
+            </select>
+          </div>
+
+          <!-- 外链 -->
+          <div class="field-group" style="margin-top:10px;">
+            <label>外部链接 <span class="required">*</span> <span class="muted">(与文件上传二选一)</span></label>
+            <input v-model="r.externalLink" placeholder="https://..." class="full-width" />
+          </div>
+
+          <!-- 文件上传 -->
+          <div class="field-group" style="margin-top:10px;">
+            <label>上传文件 <span class="required">*</span> <span class="muted">(与外链二选一)</span></label>
+            <div class="row">
+              <input type="file" @change="e => onFileChange(e, r.id)" class="flex1" />
+              <button class="secondary" @click="upload(r.id, r)">上传文件</button>
+            </div>
+            <div class="muted" style="font-size:12px;">允许格式：{{ (options.allowedFileExtensions || []).join(', ') }}</div>
+            <div class="muted" style="font-size:12px;">已上传：{{ r.filePath || '未上传' }}</div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="row" style="margin-top:14px;">
+            <button class="secondary" @click="saveDraft(r)">保存草稿</button>
+            <button @click="submit(r)">提交审核</button>
+            <button class="danger" @click="deleteDraft(r.id)">删除草稿</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 我的全部资源视图 -->
+    <div v-if="view==='mine'">
+      <h4>我的全部资源</h4>
+      <div class="resource-item" v-for="r in mine" :key="'mine-'+r.id">
+        <div><b>#{{ r.id }} {{ r.title || '(未命名)' }}</b> 状态：{{ r.status }}</div>
+        <div class="muted">反馈：{{ r.reviewFeedback || '无' }}</div>
+      </div>
+      <div class="muted" v-if="mine.length===0">暂无资源</div>
     </div>
   </div>
 
+  <!-- Admin 审核区 -->
   <div class="card" v-if="token && userInfo.role==='ADMIN'">
     <h3>Admin 审核区</h3>
     <div class="resource-item" v-for="r in pending" :key="r.id">
@@ -95,6 +186,7 @@
     <div class="muted" v-if="pending.length===0">暂无待审核资源</div>
   </div>
 
+  <!-- 可见资源 -->
   <div class="card" v-if="token && (userInfo.role==='VIEWER' || userInfo.role==='CONTRIBUTOR')">
     <h3>可见资源（仅 Approved）</h3>
     <div class="resource-item" v-for="r in approved" :key="r.id">
@@ -107,9 +199,22 @@
     <div class="muted" v-if="approved.length===0">暂无已通过资源</div>
   </div>
 
+  <!-- 提示消息 -->
   <div class="card" v-if="message">
     <b>提示：</b> {{ message }}
   </div>
+
+  <!-- 验证错误 Toast -->
+  <transition name="toast-fade">
+    <div class="toast-container" v-if="validationErrors.length > 0">
+      <div class="toast-error">
+        <div class="toast-title">提交审核失败，以下字段为必填项：</div>
+        <ul class="toast-list">
+          <li v-for="err in validationErrors" :key="err">{{ err }}</li>
+        </ul>
+      </div>
+    </div>
+  </transition>
 </div>
 
 <script>
@@ -136,7 +241,14 @@ createApp({
       },
       message: "",
       pickedFiles: {},
-      adminFeedback: {}
+      adminFeedback: {},
+      validationErrors: [],
+      validationTimer: null,
+      // 草稿箱视图控制
+      view: "drafts",
+      expandedDraft: null,
+      // 标签超限提示
+      tagLimitHit: {}
     };
   },
   methods: {
@@ -153,6 +265,8 @@ createApp({
       }
       return res.json();
     },
+
+    // ---------- 账户 ----------
     async login() {
       try {
         const result = await this.request("/api/auth/login", {
@@ -194,6 +308,53 @@ createApp({
         this.message = e.message;
       }
     },
+
+    // ---------- 草稿箱 ----------
+    toggleDraft(id) {
+      this.expandedDraft = this.expandedDraft === id ? null : id;
+    },
+
+    // ---------- 字数限制输入 ----------
+    onTitleInput(e, r) {
+      const max = this.options.titleMaxLength || 30;
+      const val = e.target.value;
+      if (val.length > max) {
+        e.target.value = val.slice(0, max);
+        r.title = val.slice(0, max);
+      } else {
+        r.title = val;
+      }
+    },
+    onDescInput(e, r) {
+      const max = this.options.descriptionMaxLength || 2000;
+      const val = e.target.value;
+      if (val.length > max) {
+        e.target.value = val.slice(0, max);
+        r.description = val.slice(0, max);
+      } else {
+        r.description = val;
+      }
+    },
+
+    // ---------- 标签 ----------
+    tagCount(r) {
+      if (!r.tags || !r.tags.trim()) return 0;
+      return r.tags.trim().split(/\s+/).filter(t => t.startsWith('#') && t.length > 1).length;
+    },
+    addTag(r) {
+      const count = this.tagCount(r);
+      if (count >= 5) {
+        this.tagLimitHit = { ...this.tagLimitHit, [r.id]: true };
+        setTimeout(() => {
+          this.tagLimitHit = { ...this.tagLimitHit, [r.id]: false };
+        }, 3000);
+        return;
+      }
+      const current = r.tags || '';
+      r.tags = current.trim().length > 0 ? current.trimEnd() + ' #' : '#';
+    },
+
+    // ---------- 草稿 CRUD ----------
     async createDraft() {
       try {
         await this.request("/api/resources", { method: "POST", headers: this.headers(false) });
@@ -223,15 +384,18 @@ createApp({
           headers: this.headers(false)
         });
         this.message = "草稿已删除";
+        if (this.expandedDraft === resourceId) this.expandedDraft = null;
         await this.reloadAll();
       } catch (e) {
         this.message = e.message;
       }
     },
+
+    // ---------- 文件上传（修复：不整体 reloadAll，只局部更新 filePath）----------
     onFileChange(e, resourceId) {
       this.pickedFiles[resourceId] = e.target.files[0];
     },
-    async upload(resourceId) {
+    async upload(resourceId, r) {
       try {
         const file = this.pickedFiles[resourceId];
         if (!file) throw new Error("请先选择文件");
@@ -246,13 +410,39 @@ createApp({
           const e = await res.json().catch(() => ({ error: "上传失败" }));
           throw new Error(e.error || "上传失败");
         }
+        const updated = await res.json();
+        // 只更新 filePath，不触发 reloadAll 避免清空描述等字段
+        r.filePath = updated.filePath || updated.file_path || '';
         this.message = "文件上传成功";
-        await this.reloadAll();
       } catch (e) {
         this.message = e.message;
       }
     },
+
+    // ---------- 提交校验 ----------
+    showValidationErrors(errors) {
+      this.validationErrors = errors;
+      if (this.validationTimer) clearTimeout(this.validationTimer);
+      this.validationTimer = setTimeout(() => {
+        this.validationErrors = [];
+        this.validationTimer = null;
+      }, 5000);
+    },
     async submit(r) {
+      const errors = [];
+      if (!r.title || !r.title.trim()) errors.push("标题 (Title)");
+      if (!r.category || !r.category.trim()) errors.push("分类 (Category)");
+      if (!r.tags || !r.tags.trim()) errors.push("标签 (Tag)");
+      if (!r.place || !r.place.trim()) errors.push("地点 (Place)");
+      if (!r.description || !r.description.trim()) errors.push("描述 (Description)");
+      const hasFile = !!(this.pickedFiles[r.id] || r.filePath);
+      const hasLink = !!(r.externalLink && r.externalLink.trim());
+      if (!hasFile && !hasLink) errors.push("文件上传或外部链接 (File Upload or External Link)");
+      if (!r.copyrightDeclaration || !r.copyrightDeclaration.trim()) errors.push("版权声明 (Copyright or Usage Declaration)");
+      if (errors.length > 0) {
+        this.showValidationErrors(errors);
+        return;
+      }
       try {
         await this.request(`/api/resources/${r.id}/submit`, {
           method: "POST",
@@ -264,6 +454,8 @@ createApp({
         this.message = e.message;
       }
     },
+
+    // ---------- Admin 审核 ----------
     async review(resourceId, approved) {
       try {
         await this.request(`/api/resources/${resourceId}/review`, {
@@ -284,4 +476,4 @@ createApp({
 }).mount("#app");
 </script>
 </body>
-</html>
+</html> 
