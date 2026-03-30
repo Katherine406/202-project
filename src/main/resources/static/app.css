@@ -199,3 +199,17 @@ button.active {
   background: #0d419d;
   outline: 2px solid #1f6feb;
 }
+
+/* 保存成功提示 */
+.save-success {
+  color: #1a7f37;
+  font-size: 13px;
+  font-weight: 600;
+  animation: fade-out 1.5s forwards;
+}
+
+@keyframes fade-out {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}

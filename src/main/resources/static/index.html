@@ -40,6 +40,92 @@
       <button class="secondary" @click="view='mine'" :class="{active: view==='mine'}">我的全部资源</button>
     </div>
 
+    <!-- 新建草稿视图 -->
+    <div v-if="view==='new'">
+      <h4>新建草稿</h4>
+      <div class="resource-item">
+        <!-- 标题 -->
+        <div class="field-group">
+          <div class="field-label-row">
+            <label>标题 <span class="required">*</span></label>
+            <span class="char-count" :class="{ warn: (newDraft.title||'').length >= options.titleMaxLength }">
+              {{ (newDraft.title||'').length }} / {{ options.titleMaxLength }}
+            </span>
+          </div>
+          <input :value="newDraft.title" @input="onNewTitleInput($event)" placeholder="请输入标题（30字内）" class="full-width" />
+        </div>
+        <!-- 分类 & 地点 -->
+        <div class="row" style="margin-top:10px;">
+          <div class="field-group flex1">
+            <label>分类 <span class="required">*</span></label>
+            <select v-model="newDraft.category" class="full-width">
+              <option value="">选择分类</option>
+              <option v-for="c in options.categories" :key="c">{{ c }}</option>
+            </select>
+          </div>
+          <div class="field-group flex1">
+            <label>地点 <span class="required">*</span></label>
+            <select v-model="newDraft.place" class="full-width">
+              <option value="">选择地点</option>
+              <option v-for="p in options.places" :key="p">{{ p }}</option>
+            </select>
+          </div>
+        </div>
+        <!-- 描述 -->
+        <div class="field-group" style="margin-top:10px;">
+          <div class="field-label-row">
+            <label>描述 <span class="required">*</span></label>
+            <span class="char-count" :class="{ warn: (newDraft.description||'').length >= options.descriptionMaxLength }">
+              {{ (newDraft.description||'').length }} / {{ options.descriptionMaxLength }}
+            </span>
+          </div>
+          <textarea :value="newDraft.description" @input="onNewDescInput($event)" placeholder="请输入描述（2000字内）"></textarea>
+        </div>
+        <!-- 标签 -->
+        <div class="field-group" style="margin-top:10px;">
+          <div class="field-label-row">
+            <label>标签 <span class="required">*</span></label>
+            <span class="muted" style="font-size:12px;">已添加 {{ newTagCount }}/5 个标签</span>
+          </div>
+          <div class="row" style="align-items:center;gap:8px;">
+            <input :value="newDraft.tags" @input="newDraft.tags = $event.target.value" placeholder="标签以 # 开头，空格分隔" class="flex1" />
+            <button class="secondary tag-btn" @click="addNewTag">+ 标签</button>
+          </div>
+          <div class="muted" style="font-size:12px;margin-top:4px;">推荐标签：{{ (options.recommendedTags || []).join('、') }}</div>
+          <div class="tag-warn" v-if="newTagLimitHit">最多可以输入 5 个标签</div>
+        </div>
+        <!-- 版权声明 -->
+        <div class="field-group" style="margin-top:10px;">
+          <label>版权声明 <span class="required">*</span></label>
+          <select v-model="newDraft.copyrightDeclaration" class="full-width">
+            <option value="">选择版权声明</option>
+            <option v-for="item in options.copyrightOptions" :key="item">{{ item }}</option>
+          </select>
+        </div>
+        <!-- 外链 -->
+        <div class="field-group" style="margin-top:10px;">
+          <label>外部链接 <span class="required">*</span> <span class="muted">(与文件上传二选一)</span></label>
+          <input v-model="newDraft.externalLink" placeholder="https://..." class="full-width" />
+        </div>
+        <!-- 文件上传 -->
+        <div class="field-group" style="margin-top:10px;">
+          <label>上传文件 <span class="required">*</span> <span class="muted">(与外链二选一)</span></label>
+          <div class="row">
+            <input type="file" @change="e => onFileChange(e, 'new')" class="flex1" />
+            <button class="secondary" @click="uploadNew">上传文件</button>
+          </div>
+          <div class="muted" style="font-size:12px;">允许格式：{{ (options.allowedFileExtensions || []).join(', ') }}</div>
+          <div class="muted" style="font-size:12px;">已上传：{{ newDraft.filePath || '未上传' }}</div>
+        </div>
+        <!-- 操作按钮 -->
+        <div class="row" style="margin-top:14px;align-items:center;">
+          <button class="secondary" @click="saveNewDraft">保存草稿</button>
+          <span class="save-success" v-if="saveSuccessMsg">{{ saveSuccessMsg }}</span>
+          <button class="secondary" @click="view='drafts'">取消</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 草稿箱视图 -->
     <div v-if="view==='drafts'">
       <h4>草稿箱</h4>
@@ -248,8 +334,20 @@ createApp({
       view: "drafts",
       expandedDraft: null,
       // 标签超限提示
-      tagLimitHit: {}
+      tagLimitHit: {},
+      // 新建草稿表单
+      newDraft: { title: '', category: '', place: '', description: '', tags: '', copyrightDeclaration: '', externalLink: '', filePath: '' },
+      newTagLimitHit: false,
+      newTagLimitTimer: null,
+      // 保存成功提示
+      saveSuccessMsg: ''
     };
+  },
+  computed: {
+    newTagCount() {
+      if (!this.newDraft.tags || !this.newDraft.tags.trim()) return 0;
+      return this.newDraft.tags.trim().split(/\s+/).filter(t => t.startsWith('#') && t.length > 1).length;
+    }
   },
   methods: {
     headers(json = true) {
@@ -355,11 +453,44 @@ createApp({
     },
 
     // ---------- 草稿 CRUD ----------
-    async createDraft() {
+    createDraft() {
+      // 重置新建表单，切换到新建视图
+      this.newDraft = { title: '', category: '', place: '', description: '', tags: '', copyrightDeclaration: '', externalLink: '', filePath: '' };
+      this.pickedFiles['new'] = null;
+      this.saveSuccessMsg = '';
+      this.view = 'new';
+    },
+    async saveNewDraft() {
       try {
-        await this.request("/api/resources", { method: "POST", headers: this.headers(false) });
-        this.message = "已创建草稿";
+        // 先在服务端创建草稿拿到 id
+        const created = await this.request("/api/resources", { method: "POST", headers: this.headers(false) });
+        const id = created.id;
+        // 如果有选择文件则先上传
+        if (this.pickedFiles['new']) {
+          const form = new FormData();
+          form.append('file', this.pickedFiles['new']);
+          const res = await fetch(`/api/resources/${id}/file`, {
+            method: 'POST', headers: this.headers(false), body: form
+          });
+          if (res.ok) {
+            const up = await res.json();
+            this.newDraft.filePath = up.filePath || up.file_path || '';
+          }
+        }
+        // 保存草稿内容
+        await this.request(`/api/resources/${id}/save-draft`, {
+          method: "POST",
+          headers: this.headers(),
+          body: JSON.stringify({ ...this.newDraft, id })
+        });
+        // 刷新草稿列表
         await this.reloadAll();
+        // 显示保存成功提示 1.5s
+        this.saveSuccessMsg = '保存成功 ✓';
+        setTimeout(() => { this.saveSuccessMsg = ''; }, 1500);
+        // 收起并切换到草稿箱
+        this.expandedDraft = null;
+        setTimeout(() => { this.view = 'drafts'; }, 400);
       } catch (e) {
         this.message = e.message;
       }
@@ -371,11 +502,44 @@ createApp({
           headers: this.headers(),
           body: JSON.stringify(r)
         });
-        this.message = "草稿已保存";
+        // 显示保存成功提示 1.5s
+        this.saveSuccessMsg = '保存成功 ✓';
+        setTimeout(() => { this.saveSuccessMsg = ''; }, 1500);
+        // 收起当前草稿
+        this.expandedDraft = null;
         await this.reloadAll();
       } catch (e) {
         this.message = e.message;
       }
+    },
+    // 新建草稿的标签方法
+    addNewTag() {
+      const count = this.newDraft.tags ? this.newDraft.tags.trim().split(/\s+/).filter(t => t.startsWith('#') && t.length > 1).length : 0;
+      if (count >= 5) {
+        this.newTagLimitHit = true;
+        if (this.newTagLimitTimer) clearTimeout(this.newTagLimitTimer);
+        this.newTagLimitTimer = setTimeout(() => { this.newTagLimitHit = false; }, 3000);
+        return;
+      }
+      const current = this.newDraft.tags || '';
+      this.newDraft.tags = current.trim().length > 0 ? current.trimEnd() + ' #' : '#';
+    },
+    onNewTitleInput(e) {
+      const max = this.options.titleMaxLength || 30;
+      const val = e.target.value;
+      this.newDraft.title = val.length > max ? val.slice(0, max) : val;
+      if (val.length > max) e.target.value = this.newDraft.title;
+    },
+    onNewDescInput(e) {
+      const max = this.options.descriptionMaxLength || 2000;
+      const val = e.target.value;
+      this.newDraft.description = val.length > max ? val.slice(0, max) : val;
+      if (val.length > max) e.target.value = this.newDraft.description;
+    },
+    async uploadNew() {
+      const file = this.pickedFiles['new'];
+      if (!file) { this.message = '请先选择文件'; return; }
+      this.message = '文件已选择，保存草稿时将一并上传';
     },
     async deleteDraft(resourceId) {
       try {
